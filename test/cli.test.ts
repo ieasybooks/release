@@ -138,6 +138,64 @@ describe("store check", () => {
   });
 });
 
+describe("store audit", () => {
+  it("has nothing to check when store.json has no audit for the store", () => {
+    expect(
+      run(["store", "audit", "--app", app(), "--store", "googlePlay"]),
+    ).toEqual({
+      code: 0,
+      stdout:
+        "Shawared's store.json has no audit for googlePlay; nothing to check.\n",
+      stderr: "",
+    });
+  });
+
+  it("needs a store it knows, and one the app is released to", () => {
+    expect(
+      run(["store", "audit", "--app", app(), "--store", "playStore"]).code,
+    ).toBe(2);
+    const folder = app();
+    const config = JSON.parse(
+      readFileSync(join(folder, "store/store.json"), "utf8"),
+    );
+    config.stores = ["appStore"];
+    writeFileSync(join(folder, "store/store.json"), JSON.stringify(config));
+    const result = run([
+      "store",
+      "audit",
+      "--app",
+      folder,
+      "--store",
+      "googlePlay",
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("Shawared isn't released to googlePlay");
+  });
+
+  it("needs the store's key when there is something to check", () => {
+    const folder = app();
+    const config = JSON.parse(
+      readFileSync(join(folder, "store/store.json"), "utf8"),
+    );
+    config.audit = {
+      googlePlay: { packageName: "com.shawared.app", contact: { phone: "" } },
+    };
+    writeFileSync(join(folder, "store/store.json"), JSON.stringify(config));
+    const result = run([
+      "store",
+      "audit",
+      "--app",
+      folder,
+      "--store",
+      "googlePlay",
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain(
+      "GOOGLE_PLAY_SERVICE_ACCOUNT_FILE must hold the path of the key file",
+    );
+  });
+});
+
 describe("store fastlane-metadata", () => {
   it("replaces the output folder with the version's metadata", () => {
     const folder = app();
