@@ -17,14 +17,12 @@ export type ReleaseInfo = {
   androidVersionCode: number;
 };
 
-// The file that holds an app's version: package.json, such as
-// apps/mobile/package.json, or a Flutter app's pubspec.yaml when it has no
-// package.json.
+// The file that holds an app's version: a Flutter app's pubspec.yaml, or
+// else package.json, such as apps/mobile/package.json. A Flutter app's
+// package.json only installs this tooling, so its pubspec.yaml wins.
 export function versionFile(app: string): string {
   const pubspec = join(app, "pubspec.yaml");
-  if (!existsSync(join(app, "package.json")) && existsSync(pubspec))
-    return pubspec;
-  return join(app, "package.json");
+  return existsSync(pubspec) ? pubspec : join(app, "package.json");
 }
 
 // The version as written, so a pubspec.yaml's +build suffix, which the build
