@@ -21,6 +21,16 @@ import {
 } from "./release-info.ts";
 import { collect, components, routingProblems } from "./routing.ts";
 import {
+  AUDITED_STORES,
+  type AppStoreKey,
+  type AuditedStore,
+  type GoogleServiceAccount,
+  auditAppGallery,
+  auditAppStore,
+  auditConfig,
+  auditGooglePlay,
+} from "./audit.ts";
+import {
   problems,
   readStore,
   releasesTo,
@@ -37,6 +47,10 @@ export const USAGE = `usage: ieasybooks-release <command>
       given, and <folder>/store/ with the version's release notes.
   store fastlane-metadata --app <folder> <out>
       Writes <folder>/store/ in the layouts fastlane's deliver and supply read.
+  store audit --app <folder> --store <appStore|googlePlay|appGallery>
+      Compares the store's settings a release doesn't set with store.json's
+      audit, failing on a difference. Uses APPLE_API_KEY_FILE,
+      GOOGLE_PLAY_SERVICE_ACCOUNT_FILE or APPGALLERY_CONNECT_SERVICE_ACCOUNT.
   appgallery publish --app <folder> <apk> [--dry-run]
       Publishes the APK to AppGallery, with APPGALLERY_CONNECT_SERVICE_ACCOUNT.
   routing <base> <head>
@@ -55,6 +69,7 @@ type Args = {
   positional: string[];
   app?: string;
   tag?: string;
+  store?: string;
   flags: Set<string>;
 };
 
@@ -197,6 +212,79 @@ function routing(argv: string[]): number {
   return 1;
 }
 
+// The credentials each store job already has for its release.
+function secretJson<T>(name: string, file = true): T {
+  const value = process.env[name];
+  if (!value)
+    throw new UsageError(
+      `${name} must hold ${file ? "the path of the key file" : "the key file's contents"}`,
+    );
+  return JSON.parse(file ? readFileSync(value, "utf8") : value) as T;
+}
+
+async function storeAudit(argv: string[]): Promise<number> {
+  const args = parse(argv, ["app", "store"], []);
+  positional(args, 0);
+  const folder = app(args);
+  const which = args.store as AuditedStore | undefined;
+  if (!which || !AUDITED_STORES.includes(which))
+    throw new UsageError(`--store must be one of ${AUDITED_STORES.join(", ")}`);
+  const store = readStore(join(folder, "store"));
+  const name = store.config.name ?? "The app";
+  if (!releasesTo(store.config, which))
+    throw new UsageError(`${name} isn't released to ${which}`);
+  const audit = auditConfig(store.config);
+  const io = { fetch };
+  let found: string[];
+  if (which === "appStore") {
+    if (!audit.appStore) return nothingToAudit(name, which);
+    found = await auditAppStore(
+      audit.appStore,
+      secretJson<AppStoreKey>("APPLE_API_KEY_FILE"),
+      io,
+    );
+  } else if (which === "googlePlay") {
+    if (!audit.googlePlay) return nothingToAudit(name, which);
+    found = await auditGooglePlay(
+      audit.googlePlay,
+      secretJson<GoogleServiceAccount>("GOOGLE_PLAY_SERVICE_ACCOUNT_FILE"),
+      io,
+    );
+  } else {
+    if (!audit.appGallery) return nothingToAudit(name, which);
+    const appId = store.config.appGallery?.appId;
+    if (!appId) throw new UsageError(`${name} has no appGallery.appId`);
+    found = await auditAppGallery(
+      audit.appGallery,
+      new AppGallery(
+        secretJson<ServiceAccount>("APPGALLERY_CONNECT_SERVICE_ACCOUNT", false),
+        appId,
+        {
+          fetch,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          log: (line) => console.log(line),
+        },
+      ),
+    );
+  }
+  if (found.length > 0) {
+    console.error(
+      `${name}'s ${which} settings differ from store.json; fix them in the store's console or in store.json:`,
+    );
+    for (const line of found) console.error(`  - ${line}`);
+    return 1;
+  }
+  console.log(`${name}'s ${which} settings match store.json.`);
+  return 0;
+}
+
+function nothingToAudit(name: string, which: string): number {
+  console.log(
+    `${name}'s store.json has no audit for ${which}; nothing to check.`,
+  );
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   try {
@@ -211,6 +299,7 @@ export async function main(argv: string[]): Promise<number> {
         const [sub, ...more] = rest;
         if (sub === "check") return storeCheck(more);
         if (sub === "fastlane-metadata") return fastlaneMetadata(more);
+        if (sub === "audit") return await storeAudit(more);
         throw new UsageError(`unknown store command ${sub ?? "(none)"}`);
       }
       case "appgallery": {

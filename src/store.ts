@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { AuditConfig } from "./audit.ts";
 
 export type StoreName = "appStore" | "googlePlay" | "appGallery";
 export const STORES: readonly StoreName[] = [
@@ -44,6 +45,9 @@ export type Config = {
     copyrightHolder: string;
   };
   appGallery?: { appId: string };
+  // The settings a release doesn't set, which `store audit` compares with
+  // each store's (audit.ts).
+  audit?: AuditConfig;
 };
 
 export function storesOf(config: Config): readonly StoreName[] {
