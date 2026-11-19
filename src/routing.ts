@@ -45,9 +45,11 @@ export function components(root = "."): string[] {
   return Object.keys(config.packages).sort();
 }
 
+// A component at the repository's root (".", as a single-package app like a
+// Flutter app has) contains every file.
 function touches(files: string[], folders: string[]): boolean {
   return files.some((file) =>
-    folders.some((folder) => file.startsWith(`${folder}/`)),
+    folders.some((folder) => folder === "." || file.startsWith(`${folder}/`)),
   );
 }
 
