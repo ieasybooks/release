@@ -46,7 +46,7 @@ describe("a Flutter app", () => {
     return folder;
   }
 
-  it("reads the version from pubspec.yaml when there's no package.json", () => {
+  it("reads the version from pubspec.yaml", () => {
     const folder = flutterApp("1.0.1");
     expect(versionFile(folder)).toBe(join(folder, "pubspec.yaml"));
     expect(readReleaseInfo(folder)).toEqual({
@@ -64,10 +64,11 @@ describe("a Flutter app", () => {
     ]);
   });
 
-  it("prefers package.json when an app has both", () => {
+  it("prefers pubspec.yaml to a package.json that only installs the tooling", () => {
     const folder = flutterApp("1.0.1");
-    writeFileSync(join(folder, "package.json"), '{"version":"2.0.0"}');
-    expect(readVersion(folder)).toBe("2.0.0");
+    writeFileSync(join(folder, "package.json"), '{"private":true}');
+    expect(versionFile(folder)).toBe(join(folder, "pubspec.yaml"));
+    expect(readVersion(folder)).toBe("1.0.1");
   });
 });
 
