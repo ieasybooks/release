@@ -1,6 +1,6 @@
 {
   "name": "@ieasybooks/release",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "The release tooling ieasybooks apps share: store listings, build numbers, AppGallery publishing and the release workflows' checks.",
   "license": "MIT",
   "type": "module",

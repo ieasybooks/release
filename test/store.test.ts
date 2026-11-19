@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  type Config,
+  type StoreName,
   length,
   pngSize,
   problems,
@@ -238,3 +240,97 @@ describe("writeFastlaneMetadata", () => {
     );
   });
 });
+
+describe("the copyright line", () => {
+  it("is the release's year and the holder, written for deliver", () => {
+    const root = fixtureStore();
+    const out = temp("fastlane-");
+    writeFastlaneMetadata(readStore(root), "0.1.3", 1003, out, 2027);
+    expect(
+      readFileSync(join(out, "app-store/metadata/copyright.txt"), "utf8"),
+    ).toBe("2027 الكتب المُيسّرة");
+  });
+
+  it("needs a holder when the app is released to the App Store", () => {
+    const root = fixtureStore();
+    editConfig(root, (config) => {
+      config.appStore!.copyrightHolder = " ";
+    });
+    expect(problems(readStore(root), "0.1.3")).toEqual([
+      `${root}/store.json: appStore.copyrightHolder is missing or empty`,
+    ]);
+  });
+});
+
+describe("an app released to some of the stores", () => {
+  // The fixture without anything only the App Store uses: Google Play and
+  // AppGallery only, like an Android-only app.
+  function androidOnlyStore(): string {
+    const root = fixtureStore();
+    editConfig(root, (config) => {
+      config.stores = ["googlePlay", "appGallery"];
+      delete config.appStore;
+      for (const locales of Object.values(config.languages))
+        delete locales.appStore;
+    });
+    for (const language of ["ar", "en"]) {
+      for (const file of ["app-store-name.txt", "subtitle.txt", "keywords.txt"])
+        rmSync(join(root, language, file));
+    }
+    rmSync(join(root, "review-notes/app-store.txt"));
+    rmSync(join(root, "screenshots/app-store"), { recursive: true });
+    return root;
+  }
+
+  it("needs only what its stores use", () => {
+    expect(problems(readStore(androidOnlyStore()), "0.1.3")).toEqual([]);
+  });
+
+  it("still needs everything its stores use", () => {
+    const root = androidOnlyStore();
+    rmSync(join(root, "ar/name.txt"));
+    rmSync(join(root, "review-notes/appgallery.txt"));
+    editConfig(root, (config) => {
+      delete config.languages.en!.googlePlay;
+      delete config.appGallery;
+    });
+    expect(problems(readStore(root), "0.1.3")).toEqual([
+      `${root}/store.json: the en language has no googlePlay locale, which Google Play needs`,
+      `${root}/store.json: appGallery.appId is missing or empty`,
+      `${root}/ar/name.txt is missing or empty`,
+      `${root}/review-notes/appgallery.txt is missing or empty`,
+    ]);
+  });
+
+  it("writes metadata only for its stores", () => {
+    const out = temp("fastlane-");
+    writeFastlaneMetadata(readStore(androidOnlyStore()), "0.1.3", 1003, out);
+    expect(readdirSync(out)).toEqual(["google-play"]);
+    expect(
+      readFileSync(join(out, "google-play/metadata/ar/title.txt"), "utf8"),
+    ).toBe(LISTINGS.ar["name.txt"]);
+  });
+
+  it("names only real stores, and at least one", () => {
+    const root = fixtureStore();
+    editConfig(root, (config) => {
+      config.stores = ["googlePlay", "playStore" as StoreName];
+    });
+    expect(problems(readStore(root), "0.1.3")).toContain(
+      `${root}/store.json: "playStore" isn't a store; use appStore, googlePlay, appGallery`,
+    );
+    editConfig(root, (config) => {
+      config.stores = [];
+    });
+    expect(problems(readStore(root), "0.1.3")).toContain(
+      `${root}/store.json: stores is empty; leave it out to release to all three`,
+    );
+  });
+});
+
+function editConfig(root: string, edit: (config: Config) => void): void {
+  const path = join(root, "store.json");
+  const config = JSON.parse(readFileSync(path, "utf8")) as Config;
+  edit(config);
+  writeFileSync(path, JSON.stringify(config, null, 2));
+}

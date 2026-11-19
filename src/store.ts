@@ -14,19 +14,50 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-export type Locales = {
-  appStore: string;
-  googlePlay: string;
-  appGallery: string;
+export type StoreName = "appStore" | "googlePlay" | "appGallery";
+export const STORES: readonly StoreName[] = [
+  "appStore",
+  "googlePlay",
+  "appGallery",
+];
+const STORE_TITLES: Record<StoreName, string> = {
+  appStore: "the App Store",
+  googlePlay: "Google Play",
+  appGallery: "AppGallery",
 };
+
+// Each language's locale code in each store the app is released to.
+export type Locales = Partial<Record<StoreName, string>>;
 
 export type Config = {
   // The app's name in messages, such as "Mofied".
   name?: string;
+  // The stores the app is released to; all three when left out.
+  stores?: StoreName[];
   languages: Record<string, Locales>;
-  appStore: { supportUrl: string; marketingUrl: string; privacyUrl: string };
-  appGallery: { appId: string };
+  // copyrightHolder makes the App Store's copyright line, "<year> <holder>",
+  // with the year of the release.
+  appStore?: {
+    supportUrl: string;
+    marketingUrl: string;
+    privacyUrl: string;
+    copyrightHolder: string;
+  };
+  appGallery?: { appId: string };
 };
+
+export function storesOf(config: Config): readonly StoreName[] {
+  return config.stores ?? STORES;
+}
+
+export function releasesTo(config: Config, store: StoreName): boolean {
+  return storesOf(config).includes(store);
+}
+
+// The App Store's copyright line for a release in the given year.
+export function copyright(config: Config, year: number): string {
+  return `${year} ${config.appStore?.copyrightHolder ?? ""}`.trim();
+}
 
 export const LISTING_FIELDS = {
   name: "name.txt",
@@ -38,6 +69,17 @@ export const LISTING_FIELDS = {
 } as const;
 
 export type Listing = Record<keyof typeof LISTING_FIELDS, string>;
+
+// The stores that show each text; a text is needed only when the app is
+// released to one of them.
+export const LISTING_STORES: Record<keyof Listing, readonly StoreName[]> = {
+  name: ["googlePlay", "appGallery"],
+  appStoreName: ["appStore"],
+  subtitle: ["appStore"],
+  shortDescription: STORES,
+  description: STORES,
+  keywords: ["appStore"],
+};
 
 // The tightest limit among the stores that use each text, in characters.
 export const LIMITS: Record<
@@ -78,6 +120,12 @@ type ImageRule = {
   max: number;
   sizes?: string[];
   playScreenshot?: boolean;
+};
+// The store each image folder is for.
+export const IMAGE_STORES: Record<string, StoreName> = {
+  "app-store": "appStore",
+  "google-play": "googlePlay",
+  appgallery: "appGallery",
 };
 export const IMAGES: Record<string, Record<string, ImageRule>> = {
   "app-store": {
@@ -175,8 +223,14 @@ export function problems(store: Store, version: string): string[] {
         `${label} has ${length(text)} characters, over ${max}: ${why}`,
       );
   };
+  found.push(...configProblems(store));
+  const stores = storesOf(store.config);
   for (const [language, listing] of Object.entries(store.listings)) {
     for (const [field, file] of Object.entries(LISTING_FIELDS)) {
+      if (
+        !LISTING_STORES[field as keyof Listing].some((s) => stores.includes(s))
+      )
+        continue;
       const limit = LIMITS[field as keyof Listing];
       check(
         join(store.root, language, file),
@@ -196,6 +250,7 @@ export function problems(store: Store, version: string): string[] {
     );
   }
   for (const [name, rule] of Object.entries(REVIEW_NOTES)) {
+    if (!stores.includes(name as StoreName)) continue;
     check(
       join(store.root, "review-notes", rule.file),
       store.reviewNotes[name as keyof typeof REVIEW_NOTES],
@@ -208,9 +263,49 @@ export function problems(store: Store, version: string): string[] {
   return found;
 }
 
+// What store.json is missing for the stores the app is released to.
+function configProblems(store: Store): string[] {
+  const found: string[] = [];
+  const file = join(store.root, "store.json");
+  const { config } = store;
+  for (const name of config.stores ?? []) {
+    if (!STORES.includes(name))
+      found.push(`${file}: "${name}" isn't a store; use ${STORES.join(", ")}`);
+  }
+  if (config.stores && config.stores.length === 0)
+    found.push(
+      `${file}: stores is empty; leave it out to release to all three`,
+    );
+  const stores = storesOf(config);
+  for (const name of stores) {
+    for (const [language, locales] of Object.entries(config.languages)) {
+      if (!locales[name])
+        found.push(
+          `${file}: the ${language} language has no ${name} locale, which ${STORE_TITLES[name]} needs`,
+        );
+    }
+  }
+  if (stores.includes("appStore")) {
+    const fields = [
+      "supportUrl",
+      "marketingUrl",
+      "privacyUrl",
+      "copyrightHolder",
+    ] as const;
+    for (const field of fields) {
+      if (!config.appStore?.[field]?.trim())
+        found.push(`${file}: appStore.${field} is missing or empty`);
+    }
+  }
+  if (stores.includes("appGallery") && !config.appGallery?.appId?.trim())
+    found.push(`${file}: appGallery.appId is missing or empty`);
+  return found;
+}
+
 function imageProblems(store: Store): string[] {
   const found: string[] = [];
   for (const [storeName, folders] of Object.entries(IMAGES)) {
+    if (!releasesTo(store.config, IMAGE_STORES[storeName]!)) continue;
     for (const language of Object.keys(store.config.languages)) {
       for (const [entry, rule] of Object.entries(folders)) {
         const path = join(
@@ -291,82 +386,118 @@ export function pngSize(bytes: Buffer): { width: number; height: number } {
 }
 
 // The metadata folders fastlane's deliver (App Store) and supply (Google
-// Play) read, under out/app-store and out/google-play.
+// Play) read, under out/app-store and out/google-play, for the stores the app
+// is released to. The copyright line takes the release's year.
 export function writeFastlaneMetadata(
   store: Store,
   version: string,
   versionCode: number,
   out: string,
+  year = new Date().getUTCFullYear(),
 ): void {
-  const { appStore } = store.config;
-  const reviewDir = join(out, "app-store", "metadata", "review_information");
-  mkdirSync(reviewDir, { recursive: true });
-  writeFileSync(join(reviewDir, "notes.txt"), store.reviewNotes.appStore);
+  const { config } = store;
+  if (releasesTo(config, "appStore")) {
+    const metadata = join(out, "app-store", "metadata");
+    const reviewDir = join(metadata, "review_information");
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, "notes.txt"), store.reviewNotes.appStore);
+    writeFileSync(join(metadata, "copyright.txt"), copyright(config, year));
+  }
 
-  for (const [language, locales] of Object.entries(store.config.languages)) {
-    const listing = store.listings[language];
+  for (const [language, locales] of Object.entries(config.languages)) {
+    const listing = store.listings[language]!;
     const notes = releaseNotes(store, version, language);
-
-    const apple = join(out, "app-store", "metadata", locales.appStore);
-    mkdirSync(apple, { recursive: true });
-    const appleFiles: Record<string, string> = {
-      "name.txt": listing.appStoreName,
-      "subtitle.txt": listing.subtitle,
-      "promotional_text.txt": listing.shortDescription,
-      "description.txt": listing.description,
-      "keywords.txt": listing.keywords,
-      "release_notes.txt": notes,
-      "support_url.txt": appStore.supportUrl,
-      "marketing_url.txt": appStore.marketingUrl,
-      "privacy_url.txt": appStore.privacyUrl,
-    };
-    for (const [file, text] of Object.entries(appleFiles))
-      writeFileSync(join(apple, file), text);
-
-    // deliver reads one folder per language and tells devices apart by size.
-    const appleShots = join(out, "app-store", "screenshots", locales.appStore);
-    mkdirSync(appleShots, { recursive: true });
-    for (const device of Object.keys(IMAGES["app-store"])) {
-      const dir = join(
-        store.root,
-        "screenshots",
-        "app-store",
+    if (releasesTo(config, "appStore"))
+      writeAppStoreLanguage(
+        store,
         language,
-        device,
+        locales.appStore!,
+        listing,
+        notes,
+        out,
       );
-      for (const file of pngs(dir))
-        copyFileSync(join(dir, file), join(appleShots, `${device}-${file}`));
-    }
+    if (releasesTo(config, "googlePlay"))
+      writeGooglePlayLanguage(
+        store,
+        language,
+        locales.googlePlay!,
+        listing,
+        notes,
+        versionCode,
+        out,
+      );
+  }
+}
 
-    const play = join(out, "google-play", "metadata", locales.googlePlay);
-    mkdirSync(join(play, "changelogs"), { recursive: true });
-    writeFileSync(join(play, "title.txt"), listing.name);
-    writeFileSync(
-      join(play, "short_description.txt"),
-      listing.shortDescription,
-    );
-    writeFileSync(join(play, "full_description.txt"), listing.description);
-    writeFileSync(join(play, "changelogs", `${versionCode}.txt`), notes);
+function writeAppStoreLanguage(
+  store: Store,
+  language: string,
+  locale: string,
+  listing: Listing,
+  notes: string,
+  out: string,
+): void {
+  const appStore = store.config.appStore!;
+  const apple = join(out, "app-store", "metadata", locale);
+  mkdirSync(apple, { recursive: true });
+  const appleFiles: Record<string, string> = {
+    "name.txt": listing.appStoreName,
+    "subtitle.txt": listing.subtitle,
+    "promotional_text.txt": listing.shortDescription,
+    "description.txt": listing.description,
+    "keywords.txt": listing.keywords,
+    "release_notes.txt": notes,
+    "support_url.txt": appStore.supportUrl,
+    "marketing_url.txt": appStore.marketingUrl,
+    "privacy_url.txt": appStore.privacyUrl,
+  };
+  for (const [file, text] of Object.entries(appleFiles))
+    writeFileSync(join(apple, file), text);
 
-    const playShots = join(store.root, "screenshots", "google-play", language);
-    const images = join(play, "images");
-    mkdirSync(images, { recursive: true });
-    copyFileSync(join(playShots, "icon.png"), join(images, "icon.png"));
-    copyFileSync(
-      join(playShots, "feature-graphic.png"),
-      join(images, "featureGraphic.png"),
-    );
-    const playFolders = {
-      phone: "phoneScreenshots",
-      "seven-inch": "sevenInchScreenshots",
-      "ten-inch": "tenInchScreenshots",
-    };
-    for (const [folder, type] of Object.entries(playFolders)) {
-      const files = pngs(join(playShots, folder));
-      if (files.length === 0) continue;
-      mkdirSync(join(images, type), { recursive: true });
-      for (const file of files)
-        copyFileSync(join(playShots, folder, file), join(images, type, file));
-    }
+  // deliver reads one folder per language and tells devices apart by size.
+  const appleShots = join(out, "app-store", "screenshots", locale);
+  mkdirSync(appleShots, { recursive: true });
+  for (const device of Object.keys(IMAGES["app-store"])) {
+    const dir = join(store.root, "screenshots", "app-store", language, device);
+    for (const file of pngs(dir))
+      copyFileSync(join(dir, file), join(appleShots, `${device}-${file}`));
+  }
+}
+
+function writeGooglePlayLanguage(
+  store: Store,
+  language: string,
+  locale: string,
+  listing: Listing,
+  notes: string,
+  versionCode: number,
+  out: string,
+): void {
+  const play = join(out, "google-play", "metadata", locale);
+  mkdirSync(join(play, "changelogs"), { recursive: true });
+  writeFileSync(join(play, "title.txt"), listing.name);
+  writeFileSync(join(play, "short_description.txt"), listing.shortDescription);
+  writeFileSync(join(play, "full_description.txt"), listing.description);
+  writeFileSync(join(play, "changelogs", `${versionCode}.txt`), notes);
+
+  const playShots = join(store.root, "screenshots", "google-play", language);
+  const images = join(play, "images");
+  mkdirSync(images, { recursive: true });
+  copyFileSync(join(playShots, "icon.png"), join(images, "icon.png"));
+  copyFileSync(
+    join(playShots, "feature-graphic.png"),
+    join(images, "featureGraphic.png"),
+  );
+  const playFolders = {
+    phone: "phoneScreenshots",
+    "seven-inch": "sevenInchScreenshots",
+    "ten-inch": "tenInchScreenshots",
+  };
+  for (const [folder, type] of Object.entries(playFolders)) {
+    const files = pngs(join(playShots, folder));
+    if (files.length === 0) continue;
+    mkdirSync(join(images, type), { recursive: true });
+    for (const file of files)
+      copyFileSync(join(playShots, folder, file), join(images, type, file));
   }
 }

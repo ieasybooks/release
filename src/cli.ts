@@ -20,7 +20,13 @@ import {
   releaseInfoProblems,
 } from "./release-info.ts";
 import { collect, components, routingProblems } from "./routing.ts";
-import { problems, readStore, writeFastlaneMetadata } from "./store.ts";
+import {
+  problems,
+  readStore,
+  releasesTo,
+  storesOf,
+  writeFastlaneMetadata,
+} from "./store.ts";
 
 export const USAGE = `usage: ieasybooks-release <command>
 
@@ -112,8 +118,13 @@ function storeCheck(argv: string[]): number {
     return 1;
   }
   const info = releaseInfo(version);
+  const stores = storesOf(store.config);
+  const platforms = [
+    ...(stores.includes("appStore") ? ["iOS"] : []),
+    ...(stores.some((s) => s !== "appStore") ? ["Android"] : []),
+  ].join(" and ");
   console.log(
-    `${name} ${version} (build ${info.iosBuildNumber} on iOS and Android) is ready to release.`,
+    `${name} ${version} (build ${info.iosBuildNumber} on ${platforms}) is ready to release.`,
   );
   return 0;
 }
@@ -149,11 +160,12 @@ async function appgalleryPublish(argv: string[]): Promise<number> {
     log: (line) => console.log(line),
   };
   const store = readStore(join(folder, "store"));
-  const gallery = new AppGallery(
-    JSON.parse(key) as ServiceAccount,
-    store.config.appGallery.appId,
-    io,
-  );
+  const appId = store.config.appGallery?.appId;
+  if (!releasesTo(store.config, "appGallery") || !appId)
+    throw new UsageError(
+      `${store.config.name ?? "The app"} isn't released to AppGallery: store.json has no appGallery.appId, or its stores leave AppGallery out`,
+    );
+  const gallery = new AppGallery(JSON.parse(key) as ServiceAccount, appId, io);
   await publishToAppGallery({
     gallery,
     store,

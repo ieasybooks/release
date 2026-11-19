@@ -311,7 +311,11 @@ export async function publishToAppGallery({
 
   for (const [language, locales] of Object.entries(store.config.languages)) {
     const lang = locales.appGallery;
-    const listing = store.listings[language];
+    if (!lang)
+      throw new Error(
+        `store.json's ${language} language has no appGallery locale`,
+      );
+    const listing = store.listings[language]!;
     const wanted = {
       lang,
       appName: listing.name,
