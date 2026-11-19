@@ -83,6 +83,15 @@ describe("routingProblems", () => {
     files,
   });
 
+  it("counts every file in a component at the repository's root", () => {
+    const pr = {
+      title: "fix: the privacy policy",
+      commits: [commit("fix: the privacy policy", "lib/constants.dart")],
+      files: ["lib/constants.dart"],
+    };
+    expect(routingProblems(pr, ["."])).toEqual([]);
+  });
+
   it("reads the components from release-please-config.json, sorted", () => {
     expect(folders).toEqual([
       "apps/mobile",
