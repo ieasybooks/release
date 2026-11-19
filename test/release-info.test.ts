@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -32,6 +32,42 @@ describe("releaseInfo", () => {
       iosBuildNumber: "2005",
       androidVersionCode: 2005,
     });
+  });
+});
+
+describe("a Flutter app", () => {
+  function flutterApp(version: string): string {
+    const folder = join(mkdtempSync(join(tmpdir(), "flutter-")), "app");
+    mkdirSync(folder);
+    writeFileSync(
+      join(folder, "pubspec.yaml"),
+      `name: islam200qa\ndescription: An app.\nversion: ${version}\n\nenvironment:\n  sdk: ">=3.8.0 <4.0.0"\n`,
+    );
+    return folder;
+  }
+
+  it("reads the version from pubspec.yaml when there's no package.json", () => {
+    const folder = flutterApp("1.0.1");
+    expect(versionFile(folder)).toBe(join(folder, "pubspec.yaml"));
+    expect(readReleaseInfo(folder)).toEqual({
+      version: "1.0.1",
+      iosBuildNumber: "1000001",
+      androidVersionCode: 1000001,
+    });
+  });
+
+  it("reports a +build suffix, which the build numbers replace", () => {
+    const folder = flutterApp("1.0.0+14");
+    expect(readVersion(folder)).toBe("1.0.0+14");
+    expect(releaseInfoProblems(folder, readVersion(folder))).toEqual([
+      `${folder}/pubspec.yaml: the version 1.0.0+14 isn't MAJOR.MINOR.PATCH`,
+    ]);
+  });
+
+  it("prefers package.json when an app has both", () => {
+    const folder = flutterApp("1.0.1");
+    writeFileSync(join(folder, "package.json"), '{"version":"2.0.0"}');
+    expect(readVersion(folder)).toBe("2.0.0");
   });
 });
 

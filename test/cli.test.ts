@@ -108,6 +108,23 @@ describe("store check", () => {
     });
   });
 
+  it("reads a Flutter app's version from pubspec.yaml and names only its platforms", () => {
+    const folder = app();
+    rmSync(join(folder, "package.json"));
+    writeFileSync(
+      join(folder, "pubspec.yaml"),
+      "name: islam200qa\nversion: 0.1.3\n",
+    );
+    const config = JSON.parse(
+      readFileSync(join(folder, "store/store.json"), "utf8"),
+    );
+    config.stores = ["googlePlay", "appGallery"];
+    writeFileSync(join(folder, "store/store.json"), JSON.stringify(config));
+    expect(run(["store", "check", "--app", folder]).stdout).toBe(
+      "Shawared 0.1.3 (build 1003 on Android) is ready to release.\n",
+    );
+  });
+
   it("calls the app 'The apps' when store.json has no name", () => {
     const folder = app();
     const config = JSON.parse(

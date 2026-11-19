@@ -35,7 +35,7 @@ bun.lock and Gemfile.lock record the commit, so an app gets new tooling only whe
 
 | Command                                               | What it does                                                                                                                                                                                                                                           |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `release-info --app <folder>`                         | Prints the version and build numbers as JSON for fastlane: `{"version":"0.1.3","iosBuildNumber":"1003","androidVersionCode":1003}`.                                                                                                                    |
+| `release-info --app <folder>`                         | Prints the version and build numbers as JSON for fastlane: `{"version":"0.1.3","iosBuildNumber":"1003","androidVersionCode":1003}`. The version is `package.json`'s, or a Flutter app's `pubspec.yaml`'s when it has no `package.json`.                |
 | `store check --app <folder> [--tag <tag>]`            | Checks that the version can be released: that it makes valid build numbers, that it matches the tag if given (`v<version>`), and that `store/` has everything every store needs within its limits, with the version's release notes in every language. |
 | `store fastlane-metadata --app <folder> <out>`        | Replaces `<out>` with `store/` in the layouts fastlane reads: `app-store/{metadata,screenshots}` for deliver and `google-play/metadata` for supply.                                                                                                    |
 | `appgallery publish --app <folder> <apk> [--dry-run]` | Publishes the APK to AppGallery with the service account key in `APPGALLERY_CONNECT_SERVICE_ACCOUNT`; see [AppGallery](#appgallery).                                                                                                                   |
@@ -47,7 +47,7 @@ bun.lock and Gemfile.lock record the commit, so an app gets new tooling only whe
 
 ## Conventions
 
-- **Build numbers** follow from the version: 1.2.3 builds as 1002003 on iOS and Android, so a release never needs one raised by hand. Minor and patch go up to 999.
+- **Build numbers** follow from the version: 1.2.3 builds as 1002003 on iOS and Android, so a release never needs one raised by hand. Minor and patch go up to 999. A Flutter app's `pubspec.yaml` holds a plain version, without `+build`: its builds take `--build-number` from `release-info`.
 - **Tags**: the apps release from `v<version>` tags, the web from `web-v<version>`. Other `v*` tags are dry runs.
 - **Commit titles** follow Conventional Commits, which release-please reads: `fix:` and `feat:` release the components a commit changes, and `chore:`, `docs:`, `ci:`, `build:`, `test:`, `refactor:`, `style:`, and any other type, such as Shawared's `content:`, release nothing. `routing` holds pull requests to that.
 
@@ -64,12 +64,19 @@ Everything the stores show besides the app itself, in `<app>/store/`. Each relea
     "ar": { "appStore": "ar-SA", "googlePlay": "ar", "appGallery": "ar" },
     "en": { "appStore": "en-US", "googlePlay": "en-US", "appGallery": "en-US" }
   },
-  "appStore": { "supportUrl": "…", "marketingUrl": "…", "privacyUrl": "…" },
+  "appStore": {
+    "supportUrl": "…",
+    "marketingUrl": "…",
+    "privacyUrl": "…",
+    "copyrightHolder": "الكتب المُيسّرة"
+  },
   "appGallery": { "appId": "…" }
 }
 ```
 
-`name` is the app's name in messages. `languages` lists one folder per language with each store's locale code for it.
+`name` is the app's name in messages. `languages` lists one folder per language with each store's locale code for it. Each App Store release gets the copyright line "`<year> <copyrightHolder>`", with the year of the release.
+
+`stores` lists the stores an app is released to, when it isn't all three: `["googlePlay", "appGallery"]` for an Android-only app. The folder then needs only what those stores use: no `appStore` settings, App Store locales, App Store texts (`app-store-name.txt`, `subtitle.txt`, `keywords.txt`), App Store reviewer notes or App Store screenshots, and `store fastlane-metadata` writes only `google-play/`.
 
 ### Texts
 

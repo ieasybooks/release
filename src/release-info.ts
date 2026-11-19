@@ -1,12 +1,13 @@
 // An app's version being released and its build numbers: the version in the
-// app's package.json, which release-please raises and the app reports, and
-// the iOS buildNumber and Android versionCode that follow from it
+// app's package.json (or, for a Flutter app, its pubspec.yaml), which
+// release-please raises and the app reports, and the iOS buildNumber and
+// Android versionCode that follow from it
 // (build-number.cjs). `ieasybooks-release release-info --app <folder>` prints
 // them as JSON for fastlane:
 //
 //   {"version":"0.1.3","iosBuildNumber":"1003","androidVersionCode":1003}
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildNumber } from "../build-number.cjs";
 
@@ -16,17 +17,27 @@ export type ReleaseInfo = {
   androidVersionCode: number;
 };
 
-// The file that holds an app's version, such as apps/mobile/package.json.
+// The file that holds an app's version: package.json, such as
+// apps/mobile/package.json, or a Flutter app's pubspec.yaml when it has no
+// package.json.
 export function versionFile(app: string): string {
+  const pubspec = join(app, "pubspec.yaml");
+  if (!existsSync(join(app, "package.json")) && existsSync(pubspec))
+    return pubspec;
   return join(app, "package.json");
 }
 
+// The version as written, so a pubspec.yaml's +build suffix, which the build
+// numbers replace, shows up as a problem instead of being dropped quietly.
 export function readVersion(app: string): string {
-  return (
-    JSON.parse(readFileSync(versionFile(app), "utf8")) as {
-      version: string;
-    }
-  ).version;
+  const file = versionFile(app);
+  const text = readFileSync(file, "utf8");
+  if (file.endsWith(".yaml")) {
+    const match = /^version:\s*["']?([^\s"'#]+)/m.exec(text);
+    if (!match) throw new Error(`${file} has no version`);
+    return match[1]!;
+  }
+  return (JSON.parse(text) as { version: string }).version;
 }
 
 export function releaseInfo(version: string): ReleaseInfo {

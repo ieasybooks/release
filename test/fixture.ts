@@ -94,6 +94,7 @@ export function makeApp(app: string, version = "0.1.3"): string {
           supportUrl: "https://shawared.com/support/",
           marketingUrl: "https://shawared.com/",
           privacyUrl: "https://shawared.com/privacy/",
+          copyrightHolder: "الكتب المُيسّرة",
         },
         appGallery: { appId: "1234567" },
       },
