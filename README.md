@@ -38,6 +38,7 @@ bun.lock and Gemfile.lock record the commit, so an app gets new tooling only whe
 | `release-info --app <folder>`                         | Prints the version and build numbers as JSON for fastlane: `{"version":"0.1.3","iosBuildNumber":"1003","androidVersionCode":1003}`. The version is `package.json`'s, or a Flutter app's `pubspec.yaml`'s: its `package.json` only installs this tooling. |
 | `store check --app <folder> [--tag <tag>]`            | Checks that the version can be released: that it makes valid build numbers, that it matches the tag if given (`v<version>`), and that `store/` has everything every store needs within its limits, with the version's release notes in every language.   |
 | `store fastlane-metadata --app <folder> <out>`        | Replaces `<out>` with `store/` in the layouts fastlane reads: `app-store/{metadata,screenshots}` for deliver and `google-play/metadata` for supply.                                                                                                      |
+| `store audit --app <folder> --store <store>`          | Compares the store's settings that a release doesn't set with `store.json`'s `audit`, and fails on a difference; see [Drift check](#drift-check). Each store job runs it before uploading.                                                               |
 | `appgallery publish --app <folder> <apk> [--dry-run]` | Publishes the APK to AppGallery with the service account key in `APPGALLERY_CONNECT_SERVICE_ACCOUNT`; see [AppGallery](#appgallery).                                                                                                                     |
 | `routing <base> <head>`                               | Checks that each commit between the refs, and the pull request title in `TITLE`, that would release changes a component of `release-please-config.json`.                                                                                                 |
 | `verify-commit <tag> <sha> [--checked]`               | Checks that the tag points at the commit, through annotated tags, and with `--checked` that the commit's latest `Checks` status passed. Uses `gh`, `GH_TOKEN` and `GITHUB_REPOSITORY`.                                                                   |
@@ -110,6 +111,29 @@ Under `screenshots/<store>/<lang>/`, shown in file name order:
 | `appgallery/<lang>/phone`                   | 3 to 5 phone screenshots                                                             |
 
 Google Play and AppGallery receive only images that changed. The App Store's screenshots are replaced on each release.
+
+## Drift check
+
+A release writes the listing texts, images, links and copyright itself, so those can't drift. The settings it doesn't set are changed by hand in each console, and `store audit` compares them with `store.json`'s `audit` at the start of each store's release job, with the credentials that job already has. A difference fails that job: fix the console, or `store.json` if the console is right.
+
+```json
+"audit": {
+  "appStore": { "bundleId": "com.mofied.app", "ageRating": "FOUR_PLUS" },
+  "googlePlay": {
+    "packageName": "com.mofied.app",
+    "contact": { "email": "…", "website": "https://mofied.com", "phone": "" }
+  },
+  "appGallery": { "ageRating": "3+", "privacyUrl": "…", "dataRightsUrl": "…" }
+}
+```
+
+| Store       | Checks                                                                                                                          | Credentials                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| App Store   | The age rating of the version being prepared, or of the live version when none is open (App Store Connect's name: `FOUR_PLUS`). | `APPLE_API_KEY_FILE`, fastlane's key file                           |
+| Google Play | The store listing's contact email, website and phone; an empty phone means none is shown.                                       | `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE`; it opens an edit and deletes it |
+| AppGallery  | AppGallery's own rating, the privacy policy URL and the data subject right URL.                                                 | `APPGALLERY_CONNECT_SERVICE_ACCOUNT`                                |
+
+Each field is checked only when it's given, and a store without an `audit` entry has nothing to check. App Privacy, Data safety and Google Play's questionnaires have no API, so they're still checked by hand.
 
 ## AppGallery
 
