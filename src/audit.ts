@@ -73,15 +73,11 @@ export function appStoreToken(key: AppStoreKey, now = Date.now()): string {
   return `${unsigned}.${signature.toString("base64url")}`;
 }
 
-// App Store Connect's appInfo states that can still change: the version being
-// prepared or one that review returned.
-const EDITABLE = new Set([
-  "PREPARE_FOR_SUBMISSION",
-  "DEVELOPER_REJECTED",
-  "REJECTED",
-  "METADATA_REJECTED",
-  "INVALID_BINARY",
-]);
+// App Store Connect's appInfo states of the live app, and of the ones a newer
+// version replaced. Any other appInfo belongs to the next version, whether it's
+// being prepared, waiting for review, in review or waiting to be released.
+const LIVE = new Set(["READY_FOR_DISTRIBUTION", "READY_FOR_SALE"]);
+const SETTLED = new Set([...LIVE, "REPLACED_WITH_NEW_INFO"]);
 
 export async function auditAppStore(
   expected: NonNullable<AuditConfig["appStore"]>,
@@ -113,11 +109,14 @@ export async function auditAppStore(
         appStoreAgeRating?: string;
       };
     }[];
-    // The rating the next version carries, or the live one when no version is open.
+    // The rating the next version carries, or the live one when there's no
+    // next version.
+    const stateOf = (i: (typeof infos)[number]) =>
+      i.attributes.state ?? i.attributes.appStoreState ?? "";
     const info =
-      infos.find((i) =>
-        EDITABLE.has(i.attributes.state ?? i.attributes.appStoreState ?? ""),
-      ) ?? infos[0];
+      infos.find((i) => !SETTLED.has(stateOf(i))) ??
+      infos.find((i) => LIVE.has(stateOf(i))) ??
+      infos[0];
     if (info?.attributes.appStoreAgeRating !== expected.ageRating)
       found.push(
         differs(

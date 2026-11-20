@@ -127,11 +127,11 @@ A release writes the listing texts, images, links and copyright itself, so those
 }
 ```
 
-| Store       | Checks                                                                                                                          | Credentials                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| App Store   | The age rating of the version being prepared, or of the live version when none is open (App Store Connect's name: `FOUR_PLUS`). | `APPLE_API_KEY_FILE`, fastlane's key file                           |
-| Google Play | The store listing's contact email, website and phone; an empty phone means none is shown.                                       | `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE`; it opens an edit and deletes it |
-| AppGallery  | AppGallery's own rating, the privacy policy URL and the data subject right URL.                                                 | `APPGALLERY_CONNECT_SERVICE_ACCOUNT`                                |
+| Store       | Checks                                                                                                                                                               | Credentials                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| App Store   | The age rating of the next version (being prepared, in review or waiting for release), or of the live one when there's none (App Store Connect's name: `FOUR_PLUS`). | `APPLE_API_KEY_FILE`, fastlane's key file                           |
+| Google Play | The store listing's contact email, website and phone; an empty phone means none is shown.                                                                            | `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE`; it opens an edit and deletes it |
+| AppGallery  | AppGallery's own rating, the privacy policy URL and the data subject right URL.                                                                                      | `APPGALLERY_CONNECT_SERVICE_ACCOUNT`                                |
 
 Each field is checked only when it's given, and a store without an `audit` entry has nothing to check. App Privacy, Data safety and Google Play's questionnaires have no API, so they're still checked by hand.
 

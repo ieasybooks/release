@@ -95,6 +95,63 @@ describe("the App Store", () => {
     );
   });
 
+  it.each(["WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_RELEASE", "REJECTED"])(
+    "checks the rating of a version that's %s over the live one",
+    async (state) => {
+      const api = standIn({
+        [APPS]: app,
+        [INFOS]: {
+          data: [
+            info("READY_FOR_DISTRIBUTION", "TWELVE_PLUS"),
+            info(state, "FOUR_PLUS"),
+          ],
+        },
+      });
+      expect(
+        await auditAppStore(
+          { bundleId: "com.mofied.app", ageRating: "FOUR_PLUS" },
+          key,
+          api,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("checks an app that has never been released by its only version", async () => {
+    const api = standIn({
+      [APPS]: app,
+      [INFOS]: { data: [info("PREPARE_FOR_SUBMISSION", "TWELVE_PLUS")] },
+    });
+    expect(
+      await auditAppStore(
+        { bundleId: "com.mofied.app", ageRating: "FOUR_PLUS" },
+        key,
+        api,
+      ),
+    ).toEqual([
+      'App Store age rating: store.json expects "FOUR_PLUS", the store has "TWELVE_PLUS"',
+    ]);
+  });
+
+  it("checks the live rating, not a replaced one, when no version is open", async () => {
+    const api = standIn({
+      [APPS]: app,
+      [INFOS]: {
+        data: [
+          info("REPLACED_WITH_NEW_INFO", "TWELVE_PLUS"),
+          info("READY_FOR_DISTRIBUTION", "FOUR_PLUS"),
+        ],
+      },
+    });
+    expect(
+      await auditAppStore(
+        { bundleId: "com.mofied.app", ageRating: "FOUR_PLUS" },
+        key,
+        api,
+      ),
+    ).toEqual([]);
+  });
+
   it("reports a live rating that differs when no version is open", async () => {
     const api = standIn({
       [APPS]: app,
