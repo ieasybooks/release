@@ -7,7 +7,7 @@
 # app's fastlane brings.
 Gem::Specification.new do |spec|
   spec.name = "ieasybooks-release"
-  spec.version = "2.1.0"
+  spec.version = "2.1.1"
   spec.summary = "The fastlane helpers ieasybooks apps share."
   spec.authors = ["ieasybooks"]
   spec.license = "MIT"
